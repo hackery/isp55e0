@@ -610,6 +610,7 @@ static void usage(void)
 	printf("Options:\n");
 	printf("  --code-flash, -f    firmware to flash\n");
 	printf("  --code-verify, -c   verify existing firwmare\n");
+	printf("  --code-brute, -b    bruteforce read existing firwmare using verify\n");
 	printf("  --data-flash, -k    data to flash\n");
 	printf("  --data-verify, -l   verify existing data\n");
 	printf("  --data-dump, -m     dump the data flash to a file\n");
@@ -964,6 +965,24 @@ static void verify_code_flash(struct device *dev)
 		errx(EXIT_FAILURE, "Check code flash failure at offset %d", offset);
 }
 
+static void bruteforce_code_flash(struct device *dev)
+{
+	int offset=0;
+	int ret;
+	unsigned char trial_byte;
+
+	dev->fw.len = 1;
+	dev->fw.buf = (uint8_t*) &trial_byte;
+
+	for (trial_byte=0; trial_byte<255; trial_byte++) {
+		//fprintf(stderr, "%02x ", trial_byte);
+		ret = flash_rw(dev, CMD_CMP_CODE_FLASH, &dev->fw, &offset);
+		fprintf(stderr, "%02x ", dev->fw.buf[0]);
+		if (ret == 0)
+			return;
+	}
+}
+
 static void erase_data_flash(struct device *dev)
 {
 	struct req_erase_data_flash req = {
@@ -1104,6 +1123,7 @@ int main(int argc, char *argv[])
 	struct device dev = {};
 	bool do_code_flash = false;
 	bool do_code_verify = false;
+	bool do_code_bruteforce = false;
 	bool do_data_flash = false;
 	bool do_data_verify = false;
 	bool do_data_dump = false;
@@ -1113,7 +1133,7 @@ int main(int argc, char *argv[])
 	while (1) {
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "c:df:hk:l:m:",
+		c = getopt_long(argc, argv, "c:bdf:hk:l:m:",
 				long_options, &option_index);
 		if (c == -1)
 			break;
@@ -1128,6 +1148,10 @@ int main(int argc, char *argv[])
 		case 'c':
 			dev.fw.filename = optarg;
 			do_code_verify = true;
+			break;
+		case 'b':
+			//dev.fw.filename = optarg;
+			do_code_bruteforce = true;
 			break;
 		case 'd':
 			dev.debug = true;
@@ -1225,6 +1249,21 @@ int main(int argc, char *argv[])
 		printf("Firmware is good\n");
 	}
 
+	if (do_code_bruteforce) {
+		send_key(&dev);
+
+		dev.fw.filename  = "STDOUT";
+		dev.fw.encrypted = false;
+		dev.fw.len       = 1;
+		dev.fw.max_flash_size = 1;
+		dev.fw.buf            = NULL;
+		
+		bruteforce_code_flash(&dev);
+
+		//printf("Dumped code flash to file\n");
+		printf("Verify give byte 0000 = %x\n", dev.fw.buf[0]);
+	}
+	
 	/* Data flash */
 
 	if (do_data_flash) {
